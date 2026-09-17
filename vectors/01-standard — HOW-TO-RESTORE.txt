@@ -1,0 +1,22 @@
+CRATE PACKAGE — Session
+========================================
+This is a Crate package: a losslessly-compressed, integrity-verified DAW session.
+
+To restore it to a byte-for-byte copy of the original session (so your DAW relinks
+automatically), open it with Crate — restoring is always free: https://crate.fluxcode.studio/get
+
+Session name : Session
+Files        : 2
+Encryption   : none
+Created (UTC) : 2026-09-17T03:47:09Z
+Integrity guarantee: every file is SHA-256 verified on both ends; restoration is
+bit-perfect or it is reported as failed. Nothing ships unverified.
+
+
+Note: a plain 7-Zip/Keka extractor can open an unencrypted package to retrieve the
+compressed audio + session files, but only Crate decodes the audio and relinks the
+session. Package id: 576809fe-4aa1-4457-9409-6ffe6bc111ca
+
+----------------------------------------
+Packed with Crate — lossless, integrity-verified session transfer.
+Get your own: https://crate.fluxcode.studio

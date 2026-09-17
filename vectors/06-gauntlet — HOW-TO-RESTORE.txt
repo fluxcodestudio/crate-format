@@ -1,0 +1,28 @@
+CRATE PACKAGE — Session
+========================================
+This is a Crate package: a losslessly-compressed, integrity-verified DAW session.
+
+To restore it to a byte-for-byte copy of the original session (so your DAW relinks
+automatically), open it with Crate — restoring is always free: https://crate.fluxcode.studio/get
+
+Session name : Session
+Files        : 3
+Encryption   : encrypted (passphrase required)
+Created (UTC) : 2026-09-17T03:47:11Z
+Integrity guarantee: every file is SHA-256 verified on both ends; restoration is
+bit-perfect or it is reported as failed. Nothing ships unverified.
+
+
+Note: a plain 7-Zip/Keka extractor can open an unencrypted package to retrieve the
+compressed audio + session files, but only Crate decodes the audio and relinks the
+session. Package id: a01a1ff4-5574-4611-862a-52c0ff7715a2
+
+Recovery records: this package includes PAR2 recovery files (.par2 and .vol*.par2). Keep ALL of
+them in the SAME folder as the .crate. If the download is damaged, just open it in Crate — it
+verifies and repairs the transfer automatically before restoring. No action needed (Crate is free
+to receive). Power-user fallback without Crate: with par2cmdline installed, run
+`par2 repair "<name>.crate.par2"` in that folder to rebuild it first.
+
+----------------------------------------
+Packed with Crate — lossless, integrity-verified session transfer.
+Get your own: https://crate.fluxcode.studio
