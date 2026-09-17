@@ -394,7 +394,7 @@ def load_manifest(src: pathlib.Path) -> dict:
 
 
 def check_exclusive(f: dict) -> None:
-    """Sub-file mechanisms are mutually exclusive (RECOVERY.md §2.2 invariant 5).
+    """Sub-file mechanisms are mutually exclusive (a format-spec refusal invariant).
 
     An entry carrying two of them is a manifest that cannot mean one thing, and the old
     if/elif ladder would have silently honoured whichever branch came first — rebuilding a
@@ -438,7 +438,7 @@ def chunk_audio(f: dict, blob_pcm: dict, blob_err: dict) -> bytes:
 def essence_bytes(f: dict, src: pathlib.Path, wrapper) -> bytes:
     """Multi-range container split (AAF/OMF): skeleton + per-stream PCM runs, spliced back.
 
-    Every geometric invariant in RECOVERY.md is a hard failure here — a violated one means the
+    Every geometric invariant in the format spec is a hard failure here — a violated one means the
     splice would silently pad, truncate or transpose bytes, and only the final SHA would catch
     it (and only sometimes, since a wrong-but-plausible file still hashes to *something*).
     """
@@ -647,7 +647,7 @@ def main(src: pathlib.Path, dst: pathlib.Path) -> int:
                 tmp = scratch_dir() / f"whole{_DECODES[0]}.tmp"
                 if codec == "flac":
                     # `--keep-foreign-metadata-if-present` is NOT optional: Crate's own whole-file
-                    # decoder passes it (crate-core `codec::flac_decode`), and without it every
+                    # decoder passes it (the engine's whole-file FLAC decode), and without it every
                     # foreign WAVE/AIFF chunk the original carried (bext, iXML, cue, LIST/INFO…)
                     # is dropped — measured 19336 -> 19244 bytes on a one-chunk test file, a
                     # different SHA, i.e. NOT byte-exact. A handful of legacy WAVs make flac

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Crate" width="88">
+<img src="assets/crate-logo-glow.png" alt="Crate" width="170">
 
 # The `.crate` format
 
