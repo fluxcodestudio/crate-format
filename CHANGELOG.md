@@ -3,6 +3,17 @@
 All notable changes to FORMAT.md, recovery_reference.py and the vectors are recorded here.
 The format's major version is the only breaking mechanism; additive fields never require one.
 
+## [4.0.1] — 2026-09-17
+
+### Changed
+- **Relicensed MIT (+CC0) → MPL-2.0.** Same permissive integration posture — embedding the
+  decoder unchanged requires nothing from us — but the file-level copyleft now guarantees the
+  format's reference tooling can never be taken closed, and the license's patent grant and
+  trademark preservation are built in (PATENTS.md continues to cover anyone implementing the
+  spec from scratch without our files). The earlier CC0 dedication of the decoder was
+  withdrawn as part of this change: its "unforkable floor" and the promise's "unrevokable
+  floor" pulled in opposite directions, and the steward chose the position MPL-2.0 protects.
+
 ## [4.0] — 2026-09-17
 
 ### Added

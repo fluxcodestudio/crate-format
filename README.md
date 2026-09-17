@@ -84,12 +84,12 @@ Studio ever dissolves or abandons the format — written down, dated, and acquis
 
 ## Integrating `.crate` into your app
 
-**Credit, if you ship support:** MIT already requires keeping the copyright notice in your
+**Credit, if you ship support:** MPL-2.0 already requires keeping the license and copyright notice in your
 distribution — and we ask something friendlier in return: if your app reads or writes `.crate`,
 tell us at the address below and we'll list you as a conformant adopter here.
 
 **Lane 1 — self-serve, today, no permission needed.** Reading and writing `.crate` packages is
-licensed for everyone under [MIT](LICENSE): implement the [minimal writer profile](FORMAT.md)
+licensed for everyone under [MPL-2.0](LICENSE): implement the [minimal writer profile](FORMAT.md)
 (store non-audio verbatim, FLAC the audio, emit the v4 manifest) and the [reference
 decoder](recovery_reference.py) as your reader, and your app exports and opens real `.crate`
 files. The spec and the vectors are your conformance suite — if `verify.sh` logic accepts your
@@ -112,8 +112,11 @@ procurement process. That is the whole company between you and the engine.
 
 ## License
 
-[MIT](LICENSE) © Fluxcode Studio LLC. The reference decoder is additionally dedicated to the
-public domain, to the extent that dedication is valid where you are.
+[MPL-2.0](LICENSE) © Fluxcode Studio LLC — chosen deliberately: the file-level copyleft means
+the format's reference tooling can never be taken closed, while every integration (embedding
+the decoder unchanged) stays friction-free. Its patent grant and trademark preservation are
+built in; [PATENTS.md](PATENTS.md) extends the promise to anyone implementing the spec from
+scratch.
 
 Crate™ and the crate logo are trademarks of Fluxcode Studio LLC. Conformant implementations
 may truthfully state that they read or write the `.crate` session format.

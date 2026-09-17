@@ -35,9 +35,10 @@ community's choice), so the tool itself can live on without us.
   merger, or change of control. A successor company that keeps honoring these commitments
   inherits them as-is. We write this exclusion down because a pre-committed release obligation
   that fires on acquisition would harm the very users it exists to protect.
-- The reference decoder in this repository is dedicated to the public domain (in addition to
-  the MIT license below), to the extent such dedication is valid where you are — so the floor
-  of this promise cannot be revoked by any future act.
+- The reference decoder and every file in this repository are licensed **MPL-2.0**, whose
+  grants are irrevocable for every copy already distributed — and our commitment is that every
+  future revision of the format ships with a decoder under the same terms. The floor of this
+  promise is MPL's terms plus the full-source release above, not the goodwill of any owner.
 
 ## 4. The packages we hold for you (Send)
 
