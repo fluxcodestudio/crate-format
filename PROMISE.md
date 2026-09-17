@@ -39,7 +39,19 @@ community's choice), so the tool itself can live on without us.
   the MIT license below), to the extent such dedication is valid where you are — so the floor
   of this promise cannot be revoked by any future act.
 
-## 4. The lineage we stand in
+## 4. The packages we hold for you (Send)
+
+Crate Send hosts in-transit packages on our infrastructure. If Fluxcode Studio LLC ever
+dissolves, ceases operations, or abandons the format:
+
+- a **six-month retrieval window** follows the last day of operation, during which any package
+  still in our custody can be downloaded by its intended recipient;
+- before shutdown, we publish a documented **export path** for recipients and senders, and the
+  hosted service runs read-only for that window;
+- at the end of the window, all hosted package data is **deleted, and the deletion certified**
+  — your masters are never orphaned in someone else's storage, ours included.
+
+## 5. The lineage we stand in
 
 Every format users already trust was built by a team this size or smaller — ZIP, tar, gzip,
 7-Zip, FLAC, WavPack were all one-person or handful projects at launch, and became universal

@@ -38,6 +38,10 @@ resumable volumes with PAR2 recovery sidecars.
 
 To check the download itself first: `cd vectors && shasum -a 256 -c SHA256SUMS`.
 
+The encrypted vector's passphrase is published **by design** — a test vector must
+include everything needed to decrypt it; no real customer's passphrase is or can be in this
+repository.
+
 Every vector's source tree ships beside its package, and `tools/make_vectors.py` regenerates
 all of them deterministically — the vectors are reproducible, not samples.
 
@@ -65,7 +69,7 @@ format is stewarded in that tradition: small, published, and yours to verify.
 
 ## The longevity promise
 
-[PROMISE.md](PROMISE.md) is our standing commitment: what happens to these files if Fluxcode
+[PROMISE.md](PROMISE.md) (longevity, including a six-month hosted-data retrieval window) and [PATENTS.md](PATENTS.md) (the patent promise) are our standing commitments: what happens to these files if Fluxcode
 Studio ever dissolves or abandons the format — written down, dated, and acquisition-safe.
 
 ## For engineers
