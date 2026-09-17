@@ -109,3 +109,6 @@ procurement process. That is the whole company between you and the engine.
 
 [MIT](LICENSE) © Fluxcode Studio LLC. The reference decoder is additionally dedicated to the
 public domain, to the extent that dedication is valid where you are.
+
+Crate™ and the crate logo are trademarks of Fluxcode Studio LLC. Conformant implementations
+may truthfully state that they read or write the `.crate` session format.
