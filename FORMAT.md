@@ -150,6 +150,11 @@ The reference decoder is the conformance oracle: your pack must rebuild byte-exa
 every file, `exit 0`. Valid and *small* are different goals — minimal packs trade the size the
 engine's dedup and residual tiers buy for write-side simplicity.
 
+The test vectors are **reproducibility fixtures, not tuning guidance**: conformance requires
+none of the vector materials, and nothing in them is a hint about how a *good* packer chooses
+its encodings — a conformant implementation is free to encode every file as it sees fit, as
+long as the reference decoder rebuilds it byte-exactly.
+
 ## 4. Scope and honest boundaries
 
 The reference decoder rebuilds **file contents** byte-for-byte, and recreates recorded symlinks.
