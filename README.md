@@ -74,6 +74,7 @@ Studio ever dissolves or abandons the format — written down, dated, and acquis
 
 ## For engineers
 
+- **Writing `.crate` in your own app:** [IMPLEMENTERS.md](IMPLEMENTERS.md) — the writer's guide and the conformance procedure
 - **Decode flow:** `7z x -spd` the container (after `cat` for split volumes, `age -d` for
   encrypted) → walk `manifest.files[]` per [FORMAT.md §1](FORMAT.md) → verify every
   `sha256_original`.
