@@ -106,7 +106,7 @@ procurement process. That is the whole company between you and the engine.
 
 ## Links
 
-- Governance: [GOVERNANCE.md](GOVERNANCE.md)
+- Governance: [GOVERNANCE.md](GOVERNANCE.md) · Security: [SECURITY.md](SECURITY.md) · Conformant adopters: [ADOPTERS.md](ADOPTERS.md)
 - Crate — the app: <https://crate.fluxcode.studio>
 - Format docs in the app: <https://crate.fluxcode.studio/docs#verification>
 
