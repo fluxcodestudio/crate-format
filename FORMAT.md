@@ -133,6 +133,23 @@ Fail per-entry (report, count, keep rebuilding the rest) on:
   the same change — a transform that is not specified here must not ship. This rule is enforced
   mechanically in Crate's release gates.
 
+## 3a. Writing a conformant minimal pack (the essentials)
+
+Any app may produce valid `.crate` packages without Crate's compression engine — the full
+tier stack (CDC dedup, residual transforms) is optional; a minimal writer is fully conformant:
+
+- non-audio files stored verbatim (`codec_used: "none"`); PCM audio as `flac-raw` container-split
+  streams (wrappers excised, `sha256_original` over the whole original file);
+- `manifest.json` with `crate_manifest_version`, one `files[]` entry per file carrying
+  `original_path`, `codec_used`, `encoded_path`, `original_bytes` and `sha256_original`; junk the
+  writer stripped is disclosed in `excluded[]`; `symlinks[]` recorded as literal targets;
+- the container is one 7-Zip archive (volumes/split/encryption/PAR2 all optional); audio may also
+  be stored as whole-file `.flac` only when foreign metadata is preserved (`--keep-foreign-metadata-if-present`).
+
+The reference decoder is the conformance oracle: your pack must rebuild byte-exactly through it,
+every file, `exit 0`. Valid and *small* are different goals — minimal packs trade the size the
+engine's dedup and residual tiers buy for write-side simplicity.
+
 ## 4. Scope and honest boundaries
 
 The reference decoder rebuilds **file contents** byte-for-byte, and recreates recorded symlinks.
