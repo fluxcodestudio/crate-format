@@ -186,16 +186,14 @@ BUILDERS = {
 
 
 def main():
-    cli = Path(os.environ.get("CRATE_CLI")
-               or REPO.parent / "CRATE" / "target" / "release" / "crate-cli")
-    if not cli.is_file():
-        sys.exit(f"crate-cli not found (set CRATE_CLI): {cli}")
-    # The CLI fail-closes on a missing par2 — point it at the desktop bundle's
-    # sidecars (the same binaries the app ships), overridable with CRATE_SIDECARS.
-    sidecars = Path(os.environ.get("CRATE_SIDECARS")
-                    or REPO.parent / "CRATE" / "apps/desktop/src-tauri/binaries")
-    if not (sidecars / "par2").is_file():
-        sys.exit(f"bundled par2 sidecar not found (set CRATE_SIDECARS): {sidecars}")
+    cli = Path(os.environ["CRATE_CLI"]) if os.environ.get("CRATE_CLI") else None
+    if not cli or not cli.is_file():
+        sys.exit("set CRATE_CLI=/path/to/crate-cli (the binary your Crate install ships)")
+    # The CLI fail-closes on a missing par2 — point it at the codec sidecars your
+    # Crate install ships (CRATE_SIDECARS), which include par2.
+    sidecars = Path(os.environ["CRATE_SIDECARS"]) if os.environ.get("CRATE_SIDECARS") else None
+    if not sidecars or not (sidecars / "par2").is_file():
+        sys.exit("set CRATE_SIDECARS=/path/to/sidecars (a folder containing par2)")
     if VEC.exists():
         shutil.rmtree(VEC)
     VEC.mkdir()

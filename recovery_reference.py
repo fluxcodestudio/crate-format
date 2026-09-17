@@ -3,7 +3,7 @@
 
 Public domain. Requires only Python 3 and the standard `flac` and `wvunpack` command-line tools.
 `wvunpack` is not optional: WavPack carries 32-bit float audio, any integer audio past FLAC's
-8-channel cap, and everything in a `--codec wavpack-only` pack. See docs/RECOVERY.md for the
+8-channel cap, and everything in a `--codec wavpack-only` pack. See FORMAT.md (this repository) for the
 format specification this implements.
 
 Usage:  7z x -spd SESSION.crate -o extracted/   # any 7-Zip tool; `age -d` first if encrypted
@@ -54,7 +54,7 @@ class EntryError(Exception):
     """One manifest entry is unrebuildable; every other file still gets rebuilt (exit 1)."""
 
 
-# Mirrors crate-core `inventory::JUNK_LEXICON_CURRENT`. `is_os_junk` is ERA-VERSIONED there:
+# Mirrors the engine's current junk lexicon constant. `is_os_junk` is era-versioned there:
 #   1 — macOS-only set, shipped through v1.6.1.
 #   2 — the v1.7.0 cross-platform widening, EXACTLY as shipped (bare `.Trash-` / `.fuse_hidden` /
 #       `.nfs` prefix matches included).
@@ -66,7 +66,7 @@ JUNK_LEXICON_CURRENT = 3
 def is_os_junk(rel_path: str, lexicon: int = JUNK_LEXICON_CURRENT) -> bool:
     """Whether Crate's pack step strips this path as OS-generated junk, under `lexicon`.
 
-    Mirrors crate-core `inventory::is_os_junk_lexicon` EXACTLY. The set is era-versioned because a
+    Mirrors the engine's junk predicate EXACTLY. The set is era-versioned because a
     reader that applies TODAY's set to YESTERDAY's package drops real content: a v1.6.1 writer
     legitimately archived `Thumbs.db` / `.Trash-1000/…`, and only lexicon 2+ calls those junk.
     Default is the CURRENT writer's set (what `recovery_test.sh` uses when verifying rebuilds of
@@ -117,7 +117,7 @@ def is_os_junk(rel_path: str, lexicon: int = JUNK_LEXICON_CURRENT) -> bool:
 
 
 def _version_major_minor(v):
-    """Leading-digits parse of the first two dotted components (mirrors crate-core
+    """Leading-digits parse of the first two dotted components (mirrors the engine
     `manifest::version_major_minor`): tolerates suffixes ("1.7.0-beta.2"), returns None when the
     major has no leading digits at all."""
     parts = str(v).strip().split(".", 2)
@@ -137,7 +137,7 @@ def _version_major_minor(v):
 
 
 def effective_junk_lexicon(manifest: dict) -> int:
-    """The junk lexicon this package was WRITTEN under (mirrors crate-core
+    """The junk lexicon this package was WRITTEN under (mirrors the engine
     `Manifest::effective_junk_lexicon`). A stamped `junk_lexicon` is believed (clamped to the range
     this escrow knows); an unstamped package is dated by `app_version` — the cross-platform
     widening shipped in 1.7.0, so ≥ 1.7 means lexicon 2 and anything older (or unparseable) means
@@ -281,7 +281,7 @@ def decode_stream(path: pathlib.Path, codec: str, endian: str, signed: bool) -> 
       resolved below so this never depends on the tool's naming behaviour again.
     * `endian`/`signed` are deliberately NOT passed to wvunpack. Crate encodes the raw region
       with `--raw-pcm=<rate>,<bits><t><ch>,le` regardless of the file's true endianness
-      (crate-core `codec::raw_pcm_spec`), so a WavPack-raw stream is a byte-transparent
+      (the engine's raw-PCM spec), so a WavPack-raw stream is a byte-transparent
       container: the bytes that went in come back out in the same order, big-endian sources
       included. `flac-raw` is the opposite — FLAC honours real endianness, so the flags matter
       there and must match what the manifest records.
