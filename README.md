@@ -78,6 +78,24 @@ Studio ever dissolves or abandons the format — written down, dated, and acquis
 - **The wvunpack `-o` trap** (§1) is the one thing most likely to silently break a
   reimplementation — read it before writing a decoder.
 
+## Integrating `.crate` into your app
+
+**Lane 1 — self-serve, today, no permission needed.** Reading and writing `.crate` packages is
+licensed for everyone under [MIT](LICENSE): implement the [minimal writer profile](FORMAT.md)
+(store non-audio verbatim, FLAC the audio, emit the v4 manifest) and the [reference
+decoder](recovery_reference.py) as your reader, and your app exports and opens real `.crate`
+files. The spec and the vectors are your conformance suite — if `verify.sh` logic accepts your
+packs, you're valid.
+
+**Lane 2 — the full compression engine, licensed.** The dedup + residual transforms that reach
+the measured sizes are the product, not the format. If you want them embedded in your
+application, write to:
+
+> **[licensing@fluxcode.studio](mailto:licensing@fluxcode.studio?subject=%5BCrate%5D%20Integration%20inquiry)**
+
+A real person reads it, and we answer within a week — with a straightforward license, not a
+procurement process. That is the whole company between you and the engine.
+
 ## Links
 
 - Crate — the app: <https://crate.fluxcode.studio>
