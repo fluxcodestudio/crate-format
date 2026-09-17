@@ -84,6 +84,10 @@ Studio ever dissolves or abandons the format — written down, dated, and acquis
 
 ## Integrating `.crate` into your app
 
+**Credit, if you ship support:** MIT already requires keeping the copyright notice in your
+distribution — and we ask something friendlier in return: if your app reads or writes `.crate`,
+tell us at the address below and we'll list you as a conformant adopter here.
+
 **Lane 1 — self-serve, today, no permission needed.** Reading and writing `.crate` packages is
 licensed for everyone under [MIT](LICENSE): implement the [minimal writer profile](FORMAT.md)
 (store non-audio verbatim, FLAC the audio, emit the v4 manifest) and the [reference
@@ -102,6 +106,7 @@ procurement process. That is the whole company between you and the engine.
 
 ## Links
 
+- Governance: [GOVERNANCE.md](GOVERNANCE.md)
 - Crate — the app: <https://crate.fluxcode.studio>
 - Format docs in the app: <https://crate.fluxcode.studio/docs#verification>
 
