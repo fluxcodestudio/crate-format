@@ -41,9 +41,7 @@ for c in 7zz 7za 7z; do command -v "$c" >/dev/null 2>&1 && SEVEN="$c" && break; 
 need flac      "https://xiph.org/flac/download/ — FLAC's command-line tools"
 need wvunpack  "https://www.wavpack.com/ — WavPack's command-line tools"
 need age       "https://github.com/FiloSottile/age — only needed for the encrypted vector"
-command -v par2 >/dev/null 2>&1 \
-  || printf 'note: par2 not installed — the PAR2 repair-recovery check is skipped with a note\n' \
-  >&2
+need par2      "PAR2 is required to verify the recovery sidecars"
 
 # decrypt the passphrase-encrypted vector: age reads its passphrase from the
 # TERMINAL, never stdin, so feed it under expect (present on macOS and most
@@ -182,25 +180,58 @@ verify_one "06-gauntlet" "$want06"
 want_note="plain hybrid packs rebuild with 7z + flac + the decoder"
 verify_one "01-standard" "$want01"
 
-# the split-volume guarantee, exercised explicitly: the 06 vector ships as
-# volumes; its rebuild above already ran through the cat path. PAR2 is checked
-# when the tool exists (the sidecars ship with 06).
-if command -v par2 >/dev/null 2>&1; then
-  if par2 verify -q "$VEC"/06-gauntlet.crate.par2 >/dev/null 2>&1 \
-     || par2 v -q "$VEC"/06-gauntlet.crate.par2 >/dev/null 2>&1; then
-    ok "PAR2 sidecars verify clean (06-gauntlet)"
-  else
-    bad "PAR2 sidecars do not verify (06-gauntlet)"
-  fi
+# A separate synthetic historical-layout vector covers a dependency that the
+# current writer does not produce. It is kept outside vectors/ so the six
+# real-writer packages above retain their stated provenance.
+if python3 "$REPO/tests/chained_residual.py" "$REF" "$SEVEN" >"$SCRATCH/chained-residual.log" 2>&1; then
+  ok "chained residual: 3 files byte-exact; cycle and failed-anchor controls refused safely"
 else
-  checks=$((checks+1))
-  printf '  − note: PAR2 verification skipped (par2 not installed; install it to run every check)\n'
+  bad "chained residual: historical dependency recovery failed"
+  cat "$SCRATCH/chained-residual.log"
+fi
+
+# the split-volume guarantee, exercised explicitly: the 06 vector ships as
+# volumes; its rebuild above already ran through the cat path.
+if par2 verify -q "$VEC"/06-gauntlet.crate.par2 >/dev/null 2>&1 \
+   || par2 v -q "$VEC"/06-gauntlet.crate.par2 >/dev/null 2>&1; then
+  ok "PAR2 sidecars verify clean (06-gauntlet)"
+else
+  bad "PAR2 sidecars do not verify (06-gauntlet)"
 fi
 
 # the shipped tree must hash to its own manifest — catch a corrupted download
 ( cd "$VEC" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 ) \
-  && { checks=$((checks+1)); ok "SHA256SUMS: every shipped file hashes clean"; } \
-  || { checks=$((checks+1)); bad "SHA256SUMS: a shipped file does not match its recorded hash"; }
+  && ok "SHA256SUMS: every shipped file hashes clean" \
+  || bad "SHA256SUMS: a shipped file does not match its recorded hash"
+
+if python3 "$REPO/tests/recut176_bounded.py" >"$SCRATCH/bounded.log" 2>&1 \
+   && grep -Eq '^Ran 14 tests ' "$SCRATCH/bounded.log" \
+   && grep -qx 'OK' "$SCRATCH/bounded.log"; then
+  ok "bounded decoder: 14 recovery, integrity and failure controls executed"
+else
+  bad "bounded decoder controls failed or did not all execute"
+  tail -40 "$SCRATCH/bounded.log"
+fi
+
+if python3 "$REPO/tests/path_safety.py" "$REF" >"$SCRATCH/path-safety.log" 2>&1 \
+   && grep -Eq '^Ran 15 tests ' "$SCRATCH/path-safety.log" \
+   && grep -qx 'OK' "$SCRATCH/path-safety.log"; then
+  ok "path safety: 15 name, namespace, junk and escape controls executed"
+else
+  bad "path safety controls failed or did not all execute"
+  tail -40 "$SCRATCH/path-safety.log"
+fi
+
+if python3 "$REPO/tests/exfat_publication.py" >"$SCRATCH/exfat-publication.log" 2>&1 \
+   && grep -Eq '^Ran 11 tests ' "$SCRATCH/exfat-publication.log" \
+   && grep -qx 'OK' "$SCRATCH/exfat-publication.log"; then
+  ok "ExFAT publication: 11 private-tree, corruption, occupied-name and failure controls executed"
+else
+  bad "ExFAT publication controls failed or did not all execute"
+  tail -40 "$SCRATCH/exfat-publication.log"
+fi
+
+[ "$checks" -eq 18 ] || { printf 'expected 18 executed checks, got %s\n' "$checks" >&2; exit 1; }
 
 printf '\n%s\n' \
   "$([ $fails -eq 0 ] && printf 'RESULT: PASS — %s checks; every vector rebuilt byte-exactly with standard tools' "$checks" \
