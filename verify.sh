@@ -223,9 +223,9 @@ else
 fi
 
 if python3 "$REPO/tests/exfat_publication.py" >"$SCRATCH/exfat-publication.log" 2>&1 \
-   && grep -Eq '^Ran 11 tests ' "$SCRATCH/exfat-publication.log" \
+   && grep -Eq '^Ran 12 tests ' "$SCRATCH/exfat-publication.log" \
    && grep -qx 'OK' "$SCRATCH/exfat-publication.log"; then
-  ok "ExFAT publication: 11 private-tree, corruption, occupied-name and failure controls executed"
+  ok "ExFAT publication: 12 private-tree, corruption, occupied-name and failure controls executed"
 else
   bad "ExFAT publication controls failed or did not all execute"
   tail -40 "$SCRATCH/exfat-publication.log"

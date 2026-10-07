@@ -486,6 +486,8 @@ def publish_private_file(temporary, destination):
         if created:
             try:
                 destination.unlink()
+            except FileNotFoundError:
+                pass  # An already-removed partial output is safe to leave absent.
             except OSError as error:
                 # The private tree may now contain truncated bytes at the intended
                 # name. Never publish that tree, even as a partial recovery.

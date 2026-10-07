@@ -165,6 +165,10 @@ class PrivateTreePublication(unittest.TestCase):
     def test_failed_private_copy_with_failed_cleanup_refuses_whole_tree(self):
         self.entry("good", b"verified first")
         self.entry("file", b"whole bytes")
+        manifest = self.src / ".crate" / "manifest.json"
+        manifest.write_text(json.dumps(self.manifest))
+        source_before = {str(path.relative_to(self.src)): path.read_bytes()
+                         for path in self.src.rglob("*") if path.is_file()}
         copy = reader.copy_region
         unlink = pathlib.Path.unlink
         engaged = {"copy": False, "cleanup": False}
@@ -188,6 +192,31 @@ class PrivateTreePublication(unittest.TestCase):
             self.recover()
         self.assertEqual(engaged, {"copy": True, "cleanup": True})
         self.assertFalse(os.path.lexists(self.dst))
+        self.assertEqual({str(path.relative_to(self.src)): path.read_bytes()
+                          for path in self.src.rglob("*") if path.is_file()}, source_before)
+        self.assert_no_scratch()
+
+    def test_failed_private_copy_already_removed_keeps_independent_recovery(self):
+        self.entry("good", b"verified first")
+        self.entry("file", b"whole bytes")
+        copy = reader.copy_region
+        engaged = []
+
+        def remove_then_fail(path, output, *args, **kwargs):
+            if path.name == "rebuilt" and pathlib.Path(output.name).name == "file":
+                engaged.append(True)
+                output.write(b"partial")
+                output.close()
+                pathlib.Path(output.name).unlink()
+                raise OSError(errno.ENOSPC, "private output already removed")
+            return copy(path, output, *args, **kwargs)
+
+        with mock.patch.object(reader, "copy_region", remove_then_fail):
+            self.assertEqual(self.recover(), 1)
+        self.assertEqual(engaged, [True])
+        self.assertFalse((self.dst / "file").exists())
+        self.assertEqual((self.dst / "good").read_bytes(), b"verified first")
+        self.assertEqual((self.src / "file").read_bytes(), b"whole bytes")
         self.assert_no_scratch()
 
     def test_occupied_private_file_is_not_replaced(self):
