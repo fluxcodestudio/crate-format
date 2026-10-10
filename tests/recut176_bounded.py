@@ -294,6 +294,35 @@ class BoundedRecovery(unittest.TestCase):
         self.assertGreater(negative_peak, threshold)
         self.assertEqual(reader.file_sha256(source), reader.file_sha256(self.work / "copy"))
 
+    def test_large_stored_recovery_is_bounded_and_hash_mismatch_is_quarantined(self):
+        source = self.src / "large-session.bin"
+        with source.open("wb") as stream:
+            for _ in range(16):
+                stream.write(b"\x9a" * (1 << 20))
+        expected = reader.file_sha256(source)
+        self.manifest["files"].append({
+            "original_path": source.name,
+            "encoded_path": source.name,
+            "codec_used": "none",
+            "original_bytes": source.stat().st_size,
+            "sha256_original": expected,
+        })
+        tracemalloc.start()
+        try:
+            self.assertEqual(self.recover(), 0)
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        self.assertLess(peak, 8 << 20)
+        self.assertEqual(reader.file_sha256(self.dst / source.name), expected)
+
+        self.manifest["files"][0]["sha256_original"] = digest(b"wrong content")
+        self.dst = self.work / "corrupt-restored"
+        self.assertEqual(self.recover(), 1)
+        self.assertFalse((self.dst / source.name).exists())
+        self.assertEqual(reader.file_sha256(self.dst / (source.name + ".UNVERIFIED")), expected)
+        self.assert_private_removed()
+
     def test_real_raw_flac_ceiling_memory_and_enospc(self):
         self.assertIsNotNone(shutil.which("flac"), "flac required; never skip decode coverage")
         raw, encoded = self.work / "large.raw", self.work / "large.flac"
@@ -376,7 +405,7 @@ class BoundedRecovery(unittest.TestCase):
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(BoundedRecovery)
-    expected = 14
+    expected = 15
     if suite.countTestCases() != expected:
         sys.exit(f"bounded recovery test count changed: {suite.countTestCases()} != {expected}")
     result = unittest.TextTestRunner(verbosity=2).run(suite)

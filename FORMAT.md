@@ -77,6 +77,18 @@ target string is safe to recreate. The `path` is untrusted input: validate it (r
 `..`, confined to the output tree) before creating anything. A link that cannot be created on
 the recovering filesystem is reported and counted; it never aborts the rest.
 
+**Directories.** `manifest.dirs[]` records directory objects with a relative `path`;
+an empty `path` denotes the package root. Older manifests may also list directory paths as
+strings in `manifest.empty_dirs[]`. Recreate the recorded directory structure, including
+otherwise empty folders. Validate every non-root path as an untrusted relative path and
+refuse any file, symlink, or filesystem-name collision that prevents a declared directory
+from being created before adding new directories. An occupied output **file** is handled as
+the per-entry failure described above: its existing bytes are preserved, other entries may
+be salvaged, and recovery exits nonzero; native-volume salvage may leave verified files and
+empty directories from the same attempt.
+Directory metadata fields do not change the public reader's filesystem-metadata boundary
+in §4.
+
 **Expanded archives (`archive_groups`).** With archive expansion enabled, a multi-file archive
 in the session was opened and its members packed as ordinary `files[]` entries under
 `<archive-path>/<inner-path>` — the rules above rebuild them byte-exactly with no new logic, as
@@ -157,8 +169,9 @@ long as the reference decoder rebuilds it byte-exactly.
 
 ## 4. Scope and honest boundaries
 
-The reference decoder rebuilds **file contents** byte-for-byte, and recreates recorded symlinks.
-It does not replay: filesystem permissions/timestamps (`fs_meta`), extended attributes and
-resource forks (`.crate/xattrs/`), or empty directories — the Crate app's own restore replays
-those, and they are not part of what `sha256_original` covers. The outer envelope of an expanded
-archive is not reproduced (its members are). This is the complete list.
+The reference decoder rebuilds **file contents** byte-for-byte, recreates recorded symlinks,
+and recreates manifest-listed directories, including empty ones. It does not replay filesystem
+permissions/timestamps (`fs_meta`), extended attributes or resource forks (`.crate/xattrs/`);
+the Crate app's own restore handles those, and they are not part of what `sha256_original`
+covers. The outer envelope of an expanded archive is not reproduced (its members are).
+This is the complete list.

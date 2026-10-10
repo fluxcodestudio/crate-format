@@ -62,47 +62,142 @@ age_decrypt(){ # in out
 "
 }
 
-# tree compare, filtered by the decoder's OWN junk predicate honouring the
-# pack's disclosure (the same comparator discipline as the internal gate)
+# Compare every published path, including junk-looking names listed as actual
+# files/links/directories. Filter only stripped paths disclosed in excluded[]
+# under the package's own historical junk lexicon.
 # forward the caller's args verbatim: the call site passes (ref srcd outd mpath)
 cmptree(){ python3 - "$@" <<'PY'
 import filecmp, json, os, sys, importlib.util as u
 ref, srcd, outd, mpath = sys.argv[1:5]
 s = u.spec_from_file_location("r", ref); m = u.module_from_spec(s); s.loader.exec_module(m)
 man = json.load(open(mpath))
+listed = {row.get("original_path") for row in man.get("files", []) if isinstance(row, dict)}
+listed.update(row.get("path") for row in man.get("symlinks", []) if isinstance(row, dict))
+listed.update(row.get("path") for row in man.get("dirs", []) if isinstance(row, dict))
+listed.update(path for path in man.get("empty_dirs", []) if isinstance(path, str))
+listed = {path for path in listed if isinstance(path, str)}
+excluded = {path for path in man.get("excluded", []) if isinstance(path, str)}
+
+def disclosed_junk(rel):
+    if not m.is_os_junk_for_pack(rel, man):
+        return False
+    # A listed descendant prevents pruning its parent even if a conflicting
+    # excluded[] row names the parent. The listed path must remain comparable.
+    if rel in listed or any(path.startswith(rel + "/") for path in listed):
+        return False
+    return any(rel == path or rel.startswith(path + "/") for path in excluded)
 
 def walk(d):
-    out = set()
-    for root, _dirs, files in os.walk(d):
+    out = {}
+    for root, dirs, files in os.walk(d, followlinks=False):
+        for name in dirs[:]:
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, d).replace(os.sep, "/")
+            if disclosed_junk(rel):
+                dirs.remove(name)
+                continue
+            kind = "link" if os.path.islink(path) else "dir"
+            out[rel] = kind
+            if kind == "link":
+                dirs.remove(name)
         for fn in files:
-            rel = os.path.relpath(os.path.join(root, fn), d)
-            if not m.is_os_junk_for_pack(rel, man):
-                out.add(rel)
+            path = os.path.join(root, fn)
+            rel = os.path.relpath(path, d).replace(os.sep, "/")
+            if not disclosed_junk(rel):
+                out[rel] = "link" if os.path.islink(path) else "file"
     return out
 
 want, got = walk(srcd), walk(outd)
-missing = sorted(want - got); extra = sorted(got - want)
+missing = sorted(want.keys() - got.keys()); extra = sorted(got.keys() - want.keys())
 differs = []
-for r in sorted(want & got):
+for r in sorted(want.keys() & got.keys()):
     a, b = os.path.join(srcd, r), os.path.join(outd, r)
     try:
-        la, lb = os.path.islink(a), os.path.islink(b)
-        if la != lb:
-            differs.append(r + " (link-ness differs)")
-        elif la:  # both links: compare the LITERAL target strings, never stat through
+        if want[r] != got[r]:
+            differs.append(f"{r} (type {want[r]} != {got[r]})")
+        elif want[r] == "link":  # compare LITERAL targets, never stat through
             if os.readlink(a) != os.readlink(b):
                 differs.append(r + " (link target differs)")
-        elif not filecmp.cmp(a, b, shallow=False):
+        elif want[r] == "file" and not filecmp.cmp(a, b, shallow=False):
             differs.append(r)
     except OSError as e:
         differs.append(f"{r} ({e})")  # a broken comparison is a VERDICT, never silence
-if not want:
+if not any(kind != "dir" for kind in want.values()):
     print("compared 0 files — the source tree never got built"); sys.exit(1)
 if missing or differs or extra:
     print(f"missing={missing[:5]} differs={differs[:5]} extra={extra[:5]} (of {len(want)})")
     sys.exit(1)
 PY
 }
+
+# Prove the comparator itself fails when a source-only empty directory is lost.
+comparator_failure=""
+mkdir -p "$SCRATCH/comparator/src/empty" "$SCRATCH/comparator/out/empty"
+printf 'source bytes' > "$SCRATCH/comparator/src/file"
+cp "$SCRATCH/comparator/src/file" "$SCRATCH/comparator/out/file"
+printf '{"files": [], "excluded": []}\n' > "$SCRATCH/comparator/manifest.json"
+if positive_output=$(cmptree "$REF" "$SCRATCH/comparator/src" "$SCRATCH/comparator/out" "$SCRATCH/comparator/manifest.json") \
+   && [ -z "$positive_output" ]; then
+  rmdir "$SCRATCH/comparator/out/empty"
+  if missing_dir_output=$(cmptree "$REF" "$SCRATCH/comparator/src" "$SCRATCH/comparator/out" "$SCRATCH/comparator/manifest.json"); then
+    comparator_failure="accepted a missing empty directory"
+  elif printf '%s\n' "$missing_dir_output" | grep -Fq "missing=['empty']"; then
+    :
+  else
+    comparator_failure="did not identify missing empty directory: $missing_dir_output"
+  fi
+else
+  comparator_failure="empty-directory positive control failed"
+fi
+
+# A junk-looking name that is listed as real payload must be checked. The same
+# name may be ignored only when the pack explicitly disclosed stripping it.
+mkdir -p "$SCRATCH/junk-comparator/src" "$SCRATCH/junk-comparator/out"
+printf 'real payload' > "$SCRATCH/junk-comparator/src/Thumbs.db"
+cp "$SCRATCH/junk-comparator/src/Thumbs.db" "$SCRATCH/junk-comparator/out/Thumbs.db"
+printf 'anchor payload' > "$SCRATCH/junk-comparator/src/anchor"
+cp "$SCRATCH/junk-comparator/src/anchor" "$SCRATCH/junk-comparator/out/anchor"
+printf '{"app_version":"1.7.6", "files":[{"original_path":"Thumbs.db"},{"original_path":"anchor"}], "excluded":[]}\n' \
+  > "$SCRATCH/junk-comparator/manifest.json"
+if listed_positive=$(cmptree "$REF" "$SCRATCH/junk-comparator/src" "$SCRATCH/junk-comparator/out" "$SCRATCH/junk-comparator/manifest.json") \
+   && [ -z "$listed_positive" ]; then
+  rm "$SCRATCH/junk-comparator/out/Thumbs.db"
+  if listed_missing=$(cmptree "$REF" "$SCRATCH/junk-comparator/src" "$SCRATCH/junk-comparator/out" "$SCRATCH/junk-comparator/manifest.json"); then
+    comparator_failure="$comparator_failure; accepted a missing listed Thumbs.db"
+  elif printf '%s\n' "$listed_missing" | grep -Fq "missing=['Thumbs.db']"; then
+    printf '{"app_version":"1.7.6", "files":[{"original_path":"Thumbs.db"},{"original_path":"anchor"}], "excluded":["Thumbs.db"]}\n' \
+      > "$SCRATCH/junk-comparator/manifest.json"
+    if overlap_missing=$(cmptree "$REF" "$SCRATCH/junk-comparator/src" "$SCRATCH/junk-comparator/out" "$SCRATCH/junk-comparator/manifest.json"); then
+      comparator_failure="$comparator_failure; excluded row hid a listed Thumbs.db"
+    elif ! printf '%s\n' "$overlap_missing" | grep -Fq "missing=['Thumbs.db']"; then
+      comparator_failure="$comparator_failure; listed/excluded overlap failed for wrong reason: $overlap_missing"
+    fi
+    printf '{"app_version":"1.7.6", "files":[{"original_path":"anchor"}], "excluded":["Thumbs.db"]}\n' \
+      > "$SCRATCH/junk-comparator/manifest.json"
+    if disclosed_missing=$(cmptree "$REF" "$SCRATCH/junk-comparator/src" "$SCRATCH/junk-comparator/out" "$SCRATCH/junk-comparator/manifest.json") \
+       && [ -z "$disclosed_missing" ]; then
+      :
+    else
+      comparator_failure="$comparator_failure; did not honor disclosed stripped Thumbs.db"
+    fi
+    printf '{"app_version":"1.6.1", "files":[{"original_path":"anchor"}], "excluded":["Thumbs.db"]}\n' \
+      > "$SCRATCH/junk-comparator/manifest.json"
+    if old_era_missing=$(cmptree "$REF" "$SCRATCH/junk-comparator/src" "$SCRATCH/junk-comparator/out" "$SCRATCH/junk-comparator/manifest.json"); then
+      comparator_failure="$comparator_failure; newer junk rule hid an older-era Thumbs.db"
+    elif ! printf '%s\n' "$old_era_missing" | grep -Fq "missing=['Thumbs.db']"; then
+      comparator_failure="$comparator_failure; older-era refusal had wrong cause: $old_era_missing"
+    fi
+  else
+    comparator_failure="$comparator_failure; listed Thumbs.db mismatch had wrong cause: $listed_missing"
+  fi
+else
+  comparator_failure="$comparator_failure; listed-junk positive control failed"
+fi
+if [ -z "$comparator_failure" ]; then
+  ok "tree comparator: empty dirs and listed junk are required; disclosed junk is excluded"
+else
+  bad "tree comparator controls failed: $comparator_failure"
+fi
 
 printf 'verifying the .crate test vectors — no Crate software involved\n\n'
 
@@ -205,12 +300,21 @@ fi
   || bad "SHA256SUMS: a shipped file does not match its recorded hash"
 
 if python3 "$REPO/tests/recut176_bounded.py" >"$SCRATCH/bounded.log" 2>&1 \
-   && grep -Eq '^Ran 14 tests ' "$SCRATCH/bounded.log" \
+   && grep -Eq '^Ran 15 tests ' "$SCRATCH/bounded.log" \
    && grep -qx 'OK' "$SCRATCH/bounded.log"; then
-  ok "bounded decoder: 14 recovery, integrity and failure controls executed"
+  ok "bounded decoder: 15 recovery, integrity and failure controls executed"
 else
   bad "bounded decoder controls failed or did not all execute"
   tail -40 "$SCRATCH/bounded.log"
+fi
+
+if python3 "$REPO/tests/empty_directories.py" >"$SCRATCH/empty-directories.log" 2>&1 \
+   && grep -Eq '^Ran 19 tests ' "$SCRATCH/empty-directories.log" \
+   && grep -qx 'OK' "$SCRATCH/empty-directories.log"; then
+  ok "empty directories: 19 path, collision, metadata-scope and publication controls executed"
+else
+  bad "empty-directory controls failed or did not all execute"
+  tail -40 "$SCRATCH/empty-directories.log"
 fi
 
 if python3 "$REPO/tests/path_safety.py" "$REF" >"$SCRATCH/path-safety.log" 2>&1 \
@@ -231,7 +335,7 @@ else
   tail -40 "$SCRATCH/exfat-publication.log"
 fi
 
-[ "$checks" -eq 18 ] || { printf 'expected 18 executed checks, got %s\n' "$checks" >&2; exit 1; }
+[ "$checks" -eq 20 ] || { printf 'expected 20 executed checks, got %s\n' "$checks" >&2; exit 1; }
 
 printf '\n%s\n' \
   "$([ $fails -eq 0 ] && printf 'RESULT: PASS — %s checks; every vector rebuilt byte-exactly with standard tools' "$checks" \

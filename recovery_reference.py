@@ -275,6 +275,40 @@ def safe_join(root: pathlib.Path, rel, what: str = "path") -> pathlib.Path:
     return out
 
 
+def manifest_directories(manifest):
+    """Validate explicit directory names; older packs may only record empty_dirs.
+
+    Directory metadata remains outside this reader's scope. The empty string is
+    the documented root sentinel in dirs[] only, never an ordinary path.
+    """
+    directories = set()
+    for field in ("dirs", "empty_dirs"):
+        rows = manifest.get(field, [])
+        if not isinstance(rows, list):
+            raise Refused(f"{field} is not a list")
+        seen = set()
+        for row in rows:
+            rel = row.get("path") if field == "dirs" and isinstance(row, dict) else row
+            if field == "dirs" and not isinstance(row, dict):
+                raise Refused("dirs entry is not an object")
+            if not isinstance(rel, str) or "\x00" in rel:
+                raise Refused(f"unusable directory path in {field}")
+            if rel in seen:
+                raise Refused(f"duplicate directory path in {field}: {rel!r}")
+            seen.add(rel)
+            if field == "dirs" and rel == "":
+                continue
+            try:
+                parts = manifest_path_parts(rel, "directory path")
+            except EntryError as error:
+                raise Refused(str(error)) from error
+            # Avoid silently changing a directory's recorded spelling.
+            if "/".join(parts) != rel:
+                raise Refused(f"noncanonical directory path: {rel!r}")
+            directories.add(parts)
+    return directories
+
+
 def preflight_destination_namespace(dst: pathlib.Path, entries: list, links: list,
                                     src: pathlib.Path, manifest: dict) -> None:
     """Prove output names remain distinct on this volume before publishing bytes.
@@ -284,6 +318,7 @@ def preflight_destination_namespace(dst: pathlib.Path, entries: list, links: lis
     parents by inode as well. A collision must never produce a successful but
     differently shaped recovery tree.
     """
+    declared_directories = manifest_directories(manifest)
     outputs = []
     for entry in entries:
         rel = entry["original_path"]
@@ -308,7 +343,7 @@ def preflight_destination_namespace(dst: pathlib.Path, entries: list, links: lis
         return tuple(unicodedata.normalize("NFC", part).casefold() for part in parts)
 
     folded, possible_aliases = {}, set()
-    for rel, parts in outputs:
+    for rel, parts in outputs + [("/".join(parts), parts) for parts in declared_directories]:
         for depth in range(1, len(parts) + 1):
             prefix = parts[:depth]
             key = key_for_parts(prefix)
@@ -319,19 +354,19 @@ def preflight_destination_namespace(dst: pathlib.Path, entries: list, links: lis
     with tempfile.TemporaryDirectory(prefix=".crate-name-check-", dir=dst) as probe_name:
         probe = pathlib.Path(probe_name)
         directories = set()
+        for parts in declared_directories:
+            directories.update(parts[:depth] for depth in range(1, len(parts) + 1))
+        for _, parts in outputs:
+            directories.update(parts[:depth] for depth in range(1, len(parts)))
+        for prefix in sorted(directories, key=lambda parts: (len(parts), parts)):
+            try:
+                probe.joinpath(*prefix).mkdir()
+            except FileExistsError as error:
+                kind = "case/Unicode" if key_for_parts(prefix) in possible_aliases else "filesystem"
+                raise Refused(f"destination {kind} aliases a manifest directory: {'/'.join(prefix)!r}") from error
+            except OSError as error:
+                raise Refused(f"cannot preflight destination directory {'/'.join(prefix)!r}: {error}") from error
         for rel, parts in outputs:
-            for depth in range(1, len(parts)):
-                prefix = parts[:depth]
-                if prefix in directories:
-                    continue
-                try:
-                    probe.joinpath(*prefix).mkdir()
-                except FileExistsError as error:
-                    kind = "case/Unicode" if key_for_parts(prefix) in possible_aliases else "filesystem"
-                    raise Refused(f"destination {kind} aliases a manifest directory: {rel!r}") from error
-                except OSError as error:
-                    raise Refused(f"cannot preflight destination directory {rel!r}: {error}") from error
-                directories.add(prefix)
             try:
                 with probe.joinpath(*parts).open("xb"):
                     pass
@@ -343,21 +378,55 @@ def preflight_destination_namespace(dst: pathlib.Path, entries: list, links: lis
 
     # A pre-existing in-tree symlink may make two differently spelled parents
     # point to one directory even if the volume itself supports both names.
-    identities = {}
-    for rel, parts in outputs:
-        safe_join(dst, rel, "output path")
-        for depth in range(1, len(parts)):
-            prefix = parts[:depth]
-            directory = dst.joinpath(*prefix)
+    identities, existing_directories = {}, set()
+    scanned_parent, existing_spellings = None, set()
+    ordered_directories = sorted(directories, key=lambda parts: (len(parts), parts))
+    for prefix in ordered_directories:
+        rel = "/".join(prefix)
+        try:
+            directory = safe_join(dst, rel, "output directory")
+            # Do not write through an existing link, even one pointing inside
+            # the destination. Directory identity must remain the recorded one.
+            if directory.is_symlink():
+                raise Refused(f"destination directories alias through a symlink: {rel!r}")
             try:
-                directory.mkdir(exist_ok=True)
-                stat = directory.stat()
-            except OSError as error:
-                raise Refused(f"cannot preflight output directory {rel!r}: {error}") from error
-            identity = (stat.st_dev, stat.st_ino)
-            other = identities.setdefault(identity, prefix)
-            if other != prefix:
-                raise Refused(f"destination directories alias: {'/'.join(other)!r} and {'/'.join(prefix)!r}")
+                metadata = directory.lstat()
+            except FileNotFoundError:
+                continue  # Validate the entire namespace before creating anything.
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise Refused(f"destination directory is occupied by a file: {rel!r}")
+            # Existing directories may resolve through case/Unicode aliases on
+            # this volume even when the manifest has only one spelling. Inspect
+            # stored names before accepting them; inode comparison alone misses
+            # aliases that have no second manifest entry. Scan each consecutive
+            # parent once, retaining only names requested by this manifest.
+            parent_prefix = prefix[:-1]
+            if parent_prefix != scanned_parent:
+                with os.scandir(directory.parent) as children:
+                    existing_spellings = {child.name for child in children
+                                          if parent_prefix + (child.name,) in directories}
+                scanned_parent = parent_prefix
+            if directory.name not in existing_spellings:
+                raise Refused(f"destination directory spelling aliases an existing name: {rel!r}")
+            existing_directories.add(prefix)
+        except (OSError, EntryError) as error:
+            raise Refused(f"cannot preflight output directory {rel!r}: {error}") from error
+        identity = (metadata.st_dev, metadata.st_ino)
+        other = identities.setdefault(identity, prefix)
+        if other != prefix:
+            raise Refused(f"destination directories alias: {'/'.join(other)!r} and {rel!r}")
+
+    # All existing prefixes passed the non-mutating checks above. Only now may
+    # missing directory names be created. Exclusive mkdir also refuses a name
+    # another process claimed after preflight, rather than adopting it silently.
+    for prefix in ordered_directories:
+        if prefix in existing_directories:
+            continue
+        rel = "/".join(prefix)
+        try:
+            safe_join(dst, rel, "output directory").mkdir()
+        except (OSError, EntryError) as error:
+            raise Refused(f"cannot create preflighted output directory {rel!r}: {error}") from error
 
 
 # These bounds apply to file data; the manifest and its reference lists remain metadata.
