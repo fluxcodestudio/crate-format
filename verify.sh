@@ -130,6 +130,13 @@ if missing or differs or extra:
 PY
 }
 
+# An empty diff is proof only when the comparator itself completed successfully.
+# Keep this verdict shared by real vectors and the silent-failure control below.
+tree_matches(){
+  out=$(cmptree "$@") || return 1
+  [ -z "$out" ]
+}
+
 # Prove the comparator itself fails when a source-only empty directory is lost.
 comparator_failure=""
 mkdir -p "$SCRATCH/comparator/src/empty" "$SCRATCH/comparator/out/empty"
@@ -148,6 +155,16 @@ if positive_output=$(cmptree "$REF" "$SCRATCH/comparator/src" "$SCRATCH/comparat
   fi
 else
   comparator_failure="empty-directory positive control failed"
+fi
+
+# A broken comparator can exit nonzero without printing a diff. That must never
+# be counted as a byte-identical vector, even though the captured output is empty.
+if tree_matches "$SCRATCH/comparator/missing-reference.py" \
+     "$SCRATCH/comparator/src" "$SCRATCH/comparator/out" \
+     "$SCRATCH/comparator/manifest.json" 2>"$SCRATCH/comparator/silent-error.log"; then
+  comparator_failure="$comparator_failure; accepted a silent comparator failure"
+elif [ -n "$out" ] || [ ! -s "$SCRATCH/comparator/silent-error.log" ]; then
+  comparator_failure="$comparator_failure; silent comparator failure control did not engage"
 fi
 
 # A junk-looking name that is listed as real payload must be checked. The same
@@ -194,7 +211,7 @@ else
   comparator_failure="$comparator_failure; listed-junk positive control failed"
 fi
 if [ -z "$comparator_failure" ]; then
-  ok "tree comparator: empty dirs and listed junk are required; disclosed junk is excluded"
+  ok "tree comparator: empty dirs and listed junk required; disclosed junk excluded; silent failure refused"
 else
   bad "tree comparator controls failed: $comparator_failure"
 fi
@@ -240,10 +257,10 @@ verify_one(){ # $1 = vector name, $2.. = shell snippet anti-vacuity assertions
     return
   fi
 
-  if out=$(cmptree "$REF" "$v/source/Session" "$w/out" "$w/pkg/.crate/manifest.json"); [ -z "$out" ]; then
+  if tree_matches "$REF" "$v/source/Session" "$w/out" "$w/pkg/.crate/manifest.json"; then
     ok "$name: rebuilt byte-identical to the shipped source"
   else
-    bad "$name: rebuild differs — $out"; return
+    bad "$name: rebuild differs — ${out:-comparator failed without diff output}"; return
   fi
 
   # anti-vacuity: the vector's reason to exist must be visible in the manifest
