@@ -57,10 +57,48 @@ age_decrypt(){ # in out
       -re {[Pp]assphrase} { send \"crate-format-test-vector\r\"; exp_continue }
       eof
     }
-    catch wait result
+    if {[catch wait result] || [llength \$result] != 4 || [lindex \$result 2] != 0} {
+      exit 1
+    }
     exit [lindex \$result 3]
 "
+  status=$?
+  [ "$status" -eq 0 ] && [ -s "$2" ]
 }
+
+# A killed, failed, or falsely successful decryptor must never publish a vector.
+mkdir -p "$SCRATCH/age-control/bin"
+cat >"$SCRATCH/age-control/bin/age" <<'SH'
+#!/bin/sh
+printf '%s' "$AGE_CONTROL_MODE" > "$AGE_CONTROL_MARKER"
+case "$AGE_CONTROL_MODE" in
+  killed) kill -KILL "$$" ;;
+  failed) exit 7 ;;
+  silent) exit 0 ;;
+esac
+SH
+chmod +x "$SCRATCH/age-control/bin/age"
+age_control_failure=""
+for mode in killed failed silent; do
+  rm -f "$SCRATCH/age-control/marker" "$SCRATCH/age-control/plain.7z"
+  if ( AGE_CONTROL_MODE="$mode"
+       AGE_CONTROL_MARKER="$SCRATCH/age-control/marker"
+       PATH="$SCRATCH/age-control/bin:$PATH"
+       export AGE_CONTROL_MODE AGE_CONTROL_MARKER PATH
+       age_decrypt "$SCRATCH/age-control/input" "$SCRATCH/age-control/plain.7z"
+     ) >"$SCRATCH/age-control/$mode.log" 2>&1; then
+    age_control_failure="$age_control_failure accepted $mode child;"
+  elif [ ! -f "$SCRATCH/age-control/marker" ] \
+       || [ "$(cat "$SCRATCH/age-control/marker")" != "$mode" ] \
+       || [ -e "$SCRATCH/age-control/plain.7z" ]; then
+    age_control_failure="$age_control_failure $mode control did not engage cleanly;"
+  fi
+done
+if [ -z "$age_control_failure" ]; then
+  ok "age helper refuses killed, failed and missing-output children"
+else
+  bad "age helper controls failed:$age_control_failure"
+fi
 
 # Compare every published path, including junk-looking names listed as actual
 # files/links/directories. Filter only stripped paths disclosed in excluded[]
@@ -312,9 +350,67 @@ else
 fi
 
 # the shipped tree must hash to its own manifest — catch a corrupted download
-( cd "$VEC" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 ) \
-  && ok "SHA256SUMS: every shipped file hashes clean" \
-  || bad "SHA256SUMS: a shipped file does not match its recorded hash"
+if ( cd "$VEC" && shasum -a 256 -c SHA256SUMS >"$SCRATCH/checksums.log" 2>&1 ); then
+  ok "SHA256SUMS: every shipped file hashes clean"
+else
+  bad "SHA256SUMS: a shipped file does not match its recorded hash"
+  grep -v ': OK$' "$SCRATCH/checksums.log" || cat "$SCRATCH/checksums.log"
+fi
+
+# Native case/Unicode alias checks can only engage on volumes with those alias
+# rules. Their injected counterparts run on every host. Refuse any other skip.
+portable_unittest_passed(){ python3 - "$1" "$2" "$3" <<'PY'
+import re
+import sys
+
+log, suite, expected = sys.argv[1], sys.argv[2], int(sys.argv[3])
+allowed_skips = {
+    "empty-directories": {
+        "test_existing_case_alias_refuses_without_writing_below_it":
+            "skipped 'destination filesystem is case-sensitive'",
+        "test_existing_unicode_alias_refuses_without_writing_below_it":
+            "skipped 'destination filesystem does not alias these Unicode names'",
+    },
+    "path-safety": {
+        "test_case_aliased_file_names_refused_before_publication":
+            "skipped 'destination volume is case-sensitive'",
+        "test_case_aliased_folders_refused_before_any_file_is_published":
+            "skipped 'destination volume is case-sensitive'",
+        "test_unicode_aliased_folders_refused_before_publication":
+            "skipped 'destination volume keeps these Unicode names distinct'",
+    },
+}[suite]
+with open(log, encoding="utf-8") as stream:
+    output = stream.read()
+statuses = re.findall(r"^(test_\w+) \([^\n]+\) \.\.\. (ok|skipped '[^\n]*')$",
+                      output, re.MULTILINE)
+skipped = {name: status for name, status in statuses if status.startswith("skipped ")}
+summary = re.search(r"^Ran (\d+) tests in [^\n]+$", output, re.MULTILINE)
+verdict = re.search(r"^OK(?: \(skipped=(\d+)\))?$", output, re.MULTILINE)
+valid = (summary is not None and int(summary.group(1)) == expected
+         and len(statuses) == expected
+         and len({name for name, _ in statuses}) == expected
+         and all(allowed_skips.get(name) == reason for name, reason in skipped.items())
+         and verdict is not None and int(verdict.group(1) or 0) == len(skipped))
+if not valid:
+    print(f"{suite}: expected {expected} named tests, got {len(statuses)}; "
+          f"skipped={skipped}; allowed={allowed_skips}")
+sys.exit(0 if valid else 1)
+PY
+}
+
+cat >"$SCRATCH/unexpected-skip.log" <<'EOF'
+test_unexpected_control (__main__.Controls.test_unexpected_control) ... skipped 'unexpected'
+----------------------------------------------------------------------
+Ran 1 tests in 0.001s
+
+OK (skipped=1)
+EOF
+if portable_unittest_passed "$SCRATCH/unexpected-skip.log" empty-directories 1 >/dev/null; then
+  bad "unittest gate accepted an unexpected skipped control"
+else
+  ok "unittest gate refuses an unexpected skipped control"
+fi
 
 if python3 "$REPO/tests/recut176_bounded.py" >"$SCRATCH/bounded.log" 2>&1 \
    && grep -Eq '^Ran 15 tests ' "$SCRATCH/bounded.log" \
@@ -326,18 +422,16 @@ else
 fi
 
 if python3 "$REPO/tests/empty_directories.py" >"$SCRATCH/empty-directories.log" 2>&1 \
-   && grep -Eq '^Ran 19 tests ' "$SCRATCH/empty-directories.log" \
-   && grep -qx 'OK' "$SCRATCH/empty-directories.log"; then
-  ok "empty directories: 19 path, collision, metadata-scope and publication controls executed"
+   && portable_unittest_passed "$SCRATCH/empty-directories.log" empty-directories 21; then
+  ok "empty directories: 21 controls passed or had named filesystem exclusions"
 else
   bad "empty-directory controls failed or did not all execute"
   tail -40 "$SCRATCH/empty-directories.log"
 fi
 
 if python3 "$REPO/tests/path_safety.py" "$REF" >"$SCRATCH/path-safety.log" 2>&1 \
-   && grep -Eq '^Ran 15 tests ' "$SCRATCH/path-safety.log" \
-   && grep -qx 'OK' "$SCRATCH/path-safety.log"; then
-  ok "path safety: 15 name, namespace, junk and escape controls executed"
+   && portable_unittest_passed "$SCRATCH/path-safety.log" path-safety 18; then
+  ok "path safety: 18 controls passed or had named filesystem exclusions"
 else
   bad "path safety controls failed or did not all execute"
   tail -40 "$SCRATCH/path-safety.log"
@@ -352,7 +446,7 @@ else
   tail -40 "$SCRATCH/exfat-publication.log"
 fi
 
-[ "$checks" -eq 20 ] || { printf 'expected 20 executed checks, got %s\n' "$checks" >&2; exit 1; }
+[ "$checks" -eq 22 ] || { printf 'expected 22 checks, got %s\n' "$checks" >&2; exit 1; }
 
 printf '\n%s\n' \
   "$([ $fails -eq 0 ] && printf 'RESULT: PASS — %s checks; every vector rebuilt byte-exactly with standard tools' "$checks" \

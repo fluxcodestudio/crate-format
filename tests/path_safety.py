@@ -209,6 +209,58 @@ class PathSafety(unittest.TestCase):
         self.assertFalse((self.dst / composed / "one.wav").exists())
         self.assertFalse((self.dst / decomposed / "two.wav").exists())
 
+    def test_injected_case_folder_alias_refused_before_publication(self):
+        self.entry("Album/one.wav", b"one")
+        self.entry("album/two.wav", b"two")
+        real_mkdir = pathlib.Path.mkdir
+
+        def aliased_mkdir(path, *args, **kwargs):
+            if path.name == "album" and any(parent.name.startswith(".crate-name-check-")
+                                            for parent in path.parents):
+                raise FileExistsError("injected case alias")
+            return real_mkdir(path, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, "mkdir", aliased_mkdir):
+            with self.assertRaisesRegex(reader.Refused, "aliases a manifest directory"):
+                self.recover()
+        self.assertFalse((self.dst / "Album" / "one.wav").exists())
+        self.assertFalse((self.dst / "album" / "two.wav").exists())
+
+    def test_injected_case_file_alias_refused_before_publication(self):
+        self.entry("Mix.wav", b"one")
+        self.entry("mix.wav", b"two", present=False)
+        real_open = pathlib.Path.open
+
+        def aliased_open(path, mode="r", *args, **kwargs):
+            if path.name == "mix.wav" and mode == "xb" and any(
+                    parent.name.startswith(".crate-name-check-") for parent in path.parents):
+                raise FileExistsError("injected case alias")
+            return real_open(path, mode, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, "open", aliased_open):
+            with self.assertRaisesRegex(reader.Refused, "aliases manifest output names"):
+                self.recover()
+        self.assertFalse((self.dst / "Mix.wav").exists())
+        self.assertFalse((self.dst / "mix.wav").exists())
+
+    def test_injected_unicode_folder_alias_refused_before_publication(self):
+        composed, decomposed = "caf\u00e9", "cafe\u0301"
+        self.entry(f"{composed}/one.wav", b"one")
+        self.entry(f"{decomposed}/two.wav", b"two", present=False)
+        real_mkdir = pathlib.Path.mkdir
+
+        def aliased_mkdir(path, *args, **kwargs):
+            if path.name == decomposed and any(parent.name.startswith(".crate-name-check-")
+                                               for parent in path.parents):
+                raise FileExistsError("injected Unicode alias")
+            return real_mkdir(path, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, "mkdir", aliased_mkdir):
+            with self.assertRaisesRegex(reader.Refused, "aliases a manifest directory"):
+                self.recover()
+        self.assertFalse((self.dst / composed / "one.wav").exists())
+        self.assertFalse((self.dst / decomposed / "two.wav").exists())
+
     @unittest.skipIf(os.name == "nt", "POSIX symlink fixture; Windows needs symlink privilege")
     def test_existing_directory_alias_refused_by_inode_before_publication(self):
         self.entry("Album/one.wav", b"one")

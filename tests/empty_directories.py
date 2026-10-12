@@ -130,6 +130,45 @@ class EmptyDirectories(unittest.TestCase):
             self.recover()
         self.assertEqual(list(stored.iterdir()), [])
 
+    def test_injected_existing_case_alias_refuses_before_writing(self):
+        self.dst.mkdir()
+        existing = self.dst / "ALBUM"
+        existing.mkdir()
+        (existing / "owner-file").write_bytes(b"owner data")
+        self.manifest["empty_dirs"] = ["a_new", "album/empty"]
+        requested = self.dst / "album"
+        real_lstat = pathlib.Path.lstat
+
+        def aliased_lstat(path, *args, **kwargs):
+            if path == requested:
+                return real_lstat(existing, *args, **kwargs)
+            return real_lstat(path, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, "lstat", aliased_lstat):
+            with self.assertRaisesRegex(reader.Refused, "spelling aliases an existing name"):
+                self.recover()
+        self.assertEqual({p.name for p in self.dst.iterdir()}, {"ALBUM"})
+        self.assertEqual((existing / "owner-file").read_bytes(), b"owner data")
+
+    def test_injected_existing_unicode_alias_refuses_before_writing(self):
+        self.dst.mkdir()
+        existing = self.dst / "caf\u00e9"
+        existing.mkdir()
+        self.manifest["empty_dirs"] = ["a_new", "cafe\u0301/empty"]
+        requested = self.dst / "cafe\u0301"
+        real_lstat = pathlib.Path.lstat
+
+        def aliased_lstat(path, *args, **kwargs):
+            if path == requested:
+                return real_lstat(existing, *args, **kwargs)
+            return real_lstat(path, *args, **kwargs)
+
+        with mock.patch.object(pathlib.Path, "lstat", aliased_lstat):
+            with self.assertRaisesRegex(reader.Refused, "spelling aliases an existing name"):
+                self.recover()
+        self.assertEqual({p.name for p in self.dst.iterdir()}, {"caf\u00e9"})
+        self.assertEqual(list(existing.iterdir()), [])
+
     def test_existing_exact_spelling_parent_accepts_new_empty_directory(self):
         self.dst.mkdir()
         existing = self.dst / "album"
@@ -220,4 +259,4 @@ class EmptyDirectories(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)
